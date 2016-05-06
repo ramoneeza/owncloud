@@ -1,57 +1,23 @@
-FROM php:7-fpm
+FROM php:5.6-fpm
 
 RUN apt-get update && apt-get install -y \
 	bzip2 \
 	libcurl4-openssl-dev \
 	libfreetype6-dev \
- 	libicu-dev \
- 	libjpeg-dev \
- 	libmcrypt-dev \
- 	libmemcached-dev \
+	libicu-dev \
+	libjpeg-dev \
+	libmcrypt-dev \
+	libmemcached-dev \
 	libpng12-dev \
 	libpq-dev \
 	libxml2-dev \
-    libldap2-dev \
-	&& rm -rf /var/lib/apt/lists/* \
- 	# enable extenions
- 	&& docker-php-ext-configure gd --with-png-dir=/usr --with-jpeg-dir=/usr \
- 	&& docker-php-ext-install gd exif intl mbstring mcrypt opcache pdo_mysql pdo_pgsql pgsql zip \
- 	# self compiled redis
- 	&& curl -fsSL 'https://github.com/phpredis/phpredis/archive/php7.tar.gz' -o redis.tar.gz \
- 	&& mkdir -p redis \
- 	&& tar -xf redis.tar.gz -C redis --strip-components=1 \
- 	&& rm redis.tar.gz \
- 	&& ( \
- 		cd redis \
- 		&& phpize \
- 		&& ./configure \
- 		&& make -j$(nproc) \
- 		&& make install \
- 	) \
- 	&& rm -r redis \
- 	&& docker-php-ext-enable redis \
- 	# self compiled memcached
- 	&& curl -fsSL 'https://github.com/php-memcached-dev/php-memcached/archive/php7.tar.gz' -o memcached.tar.gz \
- 	&& mkdir -p memcached \
- 	&& tar -xf memcached.tar.gz -C memcached --strip-components=1 \
- 	&& rm memcached.tar.gz \
- 	&& ( \
- 		cd memcached \
- 		&& phpize \
- 		&& ./configure --disable-memcached-sasl \
- 		&& make -j$(nproc) \
- 		&& make install \
- 	) \
- 	&& rm -r memcached \
- 	&& docker-php-ext-enable memcached \
- 	# pecl extensions
- 	&& pecl install APCu \
- 	&& docker-php-ext-enable apcu
+	libldap2-dev \
+	&& rm -rf /var/lib/apt/lists/*
 
-# LDAP extension
- RUN docker-php-ext-configure ldap --with-libdir=lib/x86_64-linux-gnu \
- 	&& docker-php-ext-install ldap
- 
+# https://doc.owncloud.org/server/8.1/admin_manual/installation/source_installation.html#prerequisites
+RUN docker-php-ext-configure gd --with-png-dir=/usr --with-jpeg-dir=/usr \
+	&& docker-php-ext-install gd exif intl mbstring mcrypt mysql opcache pdo_mysql pdo_pgsql pgsql zip
+
 # set recommended PHP.ini settings
 # see https://secure.php.net/manual/en/opcache.installation.php
 RUN { \
@@ -62,6 +28,15 @@ RUN { \
 		echo 'opcache.fast_shutdown=1'; \
 		echo 'opcache.enable_cli=1'; \
 	} > /usr/local/etc/php/conf.d/opcache-recommended.ini
+
+# LDAP extension
+ RUN docker-php-ext-configure ldap --with-libdir=lib/x86_64-linux-gnu \
+ 	&& docker-php-ext-install ldap
+ 
+
+# PECL extensions
+RUN pecl install APCu-4.0.10 redis memcached \
+	&& docker-php-ext-enable apcu redis memcached
 
 ENV OWNCLOUD_VERSION 9.0.1
 VOLUME /var/www/html
@@ -76,10 +51,7 @@ RUN curl -fsSL -o owncloud.tar.bz2 \
 	&& gpg --batch --verify owncloud.tar.bz2.asc owncloud.tar.bz2 \
 	&& rm -r "$GNUPGHOME" owncloud.tar.bz2.asc \
 	&& tar -xjf owncloud.tar.bz2 -C /usr/src/ \
-	&& rm owncloud.tar.bz2 \
-# make owncloud cli occ usable via docker exec
-	&& echo '#!/bin/bash\nsu www-data -s /bin/bash -c "php /var/www/html/occ $*"' > /usr/local/sbin/occ \
-	&& chmod +x /usr/local/sbin/occ
+	&& rm owncloud.tar.bz2
 
 COPY docker-entrypoint.sh /entrypoint.sh
 
